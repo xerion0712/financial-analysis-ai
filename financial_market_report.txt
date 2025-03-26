@@ -1,0 +1,35 @@
+Financial Market Analysis Report
+
+=== Data Analysis Summary ===
+No analysis summary provided.
+
+Technical Indicators:
+
+=== Forecast Results ===
+
+--- Prophet Forecast ---
+Forecast Summary: No forecast summary provided.
+Model Metadata:
+  - model: Prophet
+  - target_column: Average_Close
+  - forecast_horizon: 30
+  - n_observations: 480
+
+--- ARIMA Forecast ---
+Forecast Summary: No forecast summary provided.
+Model Metadata:
+  - model: ARIMA
+  - target_column: Average_Close
+  - forecast_horizon: 30
+  - n_observations: 480
+  - arima_order: (2, 1, 2)
+  - seasonal_order: (0, 0, 0, 0)
+  - frequency: D
+
+--- Ensemble Forecast ---
+Forecast Summary: No forecast summary provided.
+Model Metadata:
+
+=== Visualizations ===
+Price Trend: See attached visualization output.
+Forecast: See attached visualization output.

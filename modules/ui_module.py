@@ -1,7 +1,17 @@
+#modules ui_module.py
+
+
 import logging
 from abc import ABC, abstractmethod
 from flask import Flask, request, render_template
 from typing import Dict, Any
+import sys
+import os
+import pandas as pd
+import datetime
+
+# Add the parent directory to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Импортируем функцию из общего пайплайна (убедитесь, что путь указан корректно)
 from main import run_pipeline
@@ -17,7 +27,7 @@ logger = logging.getLogger(__name__)
 # -------------------------------------------------------------------
 class BaseUI(ABC):
     """
-    Abstract Base Class for User Interface modules.
+    Abstract Base Class for UI modules.
     Defines the core API that all UI implementations must follow.
     """
     @abstractmethod
@@ -30,9 +40,6 @@ class BaseUI(ABC):
         """Render the dashboard with the given data."""
         pass
 
-# -------------------------------------------------------------------
-# Concrete Web UI implementation using Flask.
-# -------------------------------------------------------------------
 class WebUI(BaseUI):
     """
     Web-based UI using Flask.
@@ -43,41 +50,60 @@ class WebUI(BaseUI):
       - Combined HTML report
     """
     def __init__(self):
-        """
-        Initialize the Flask app and set up the necessary routes.
-        """
         self.app = Flask(__name__, template_folder='templates')
         self.setup_routes()
 
     def setup_routes(self) -> None:
-        """
-        Set up the Flask routes for the web dashboard.
-        """
         @self.app.route('/', methods=['GET', 'POST'])
+        
         def index():
             if request.method == 'POST':
-                # Получаем параметры из формы
+                mode = request.form.get('mode', 'historical')
                 ticker = request.form.get('ticker', 'AAPL')
-                start_date = request.form.get('start_date', '2020-01-01')
-                end_date = request.form.get('end_date', '2020-12-31')
+
+                # We'll read the form fields, but they might be empty if mode == 'forecast'
+                start_date = request.form.get('start_date', '')
+                end_date = request.form.get('end_date', '')
                 forecast_horizon = int(request.form.get('forecast_horizon', 5))
 
-                logger.info("Received parameters: ticker=%s, start_date=%s, end_date=%s, forecast_horizon=%d",
-                            ticker, start_date, end_date, forecast_horizon)
+                logger.info(f"Mode={mode}, Ticker={ticker}, Start={start_date}, End={end_date}, Horizon={forecast_horizon}")
 
-                try:
-                    # Запуск общего пайплайна, который агрегирует данные, анализирует их,
-                    # создает графики с помощью Bokeh, прогнозирует и генерирует отчёт.
-                    pipeline_results: Dict[str, Any] = run_pipeline(ticker, start_date, end_date, forecast_horizon)
-                except Exception as e:
-                    logger.error("Error running pipeline: %s", e)
-                    return render_template('error.html', message="An error occurred while processing the data.")
+                if mode == 'historical':
+                    # Historical data only
+                    pipeline_results = run_pipeline(
+                        ticker=ticker,
+                        start_date=start_date,
+                        end_date=end_date,
+                        forecast_horizon=0,
+                        enable_forecast=False
+                    )
 
-                # Если пайплайн вернул ошибку, отображаем сообщение
+                elif mode == 'forecast':
+                    # Forecast only, but auto-set the last 2 years for data
+                    # For example, from 2 years ago to today
+                    today = pd.Timestamp.today().normalize()
+                    two_years_ago = today - pd.Timedelta(days=730)
+
+                    pipeline_results = run_pipeline(
+                        ticker=ticker,
+                        start_date=two_years_ago.strftime("%Y-%m-%d"),
+                        end_date=today.strftime("%Y-%m-%d"),
+                        forecast_horizon=forecast_horizon,
+                        enable_forecast=True
+                    )
+
+                else:  # mode == 'both'
+                    pipeline_results = run_pipeline(
+                        ticker=ticker,
+                        start_date=start_date,
+                        end_date=end_date,
+                        forecast_horizon=forecast_horizon,
+                        enable_forecast=True
+                    )
+
                 if "error" in pipeline_results:
                     return render_template('error.html', message=pipeline_results["error"])
 
-                # Рендерим шаблон dashboard.html с результатами
                 return render_template(
                     'dashboard.html',
                     ticker=pipeline_results.get("ticker", ticker),
@@ -87,32 +113,21 @@ class WebUI(BaseUI):
                     forecast_metadata=pipeline_results.get("forecast_metadata", {}),
                     report_html=pipeline_results.get("report_html", "")
                 )
-            # Для GET-запроса отображаем форму ввода параметров.
-            return render_template('index.html')
 
+            # GET request
+            return render_template('index.html')
         @self.app.route('/report')
         def report():
-            # Если необходимо, можно добавить отдельную страницу для отчёта.
             return "Report page placeholder."
 
     def run(self) -> None:
-        """
-        Start the Flask web server to run the UI.
-        """
         logger.info("Starting the Web UI.")
         self.app.run(debug=True)
 
     def display_dashboard(self, **kwargs) -> str:
-        """
-        This method is part of the BaseUI interface.
-        For this web UI, rendering is handled via Flask routes.
-        """
         logger.info("display_dashboard() called. Please visit the root URL of the web interface.")
         return "Dashboard is running. Please visit the web interface."
 
-# -------------------------------------------------------------------
-# Entry point: Instantiate and run the Web UI.
-# -------------------------------------------------------------------
 if __name__ == '__main__':
     ui = WebUI()
     ui.run()

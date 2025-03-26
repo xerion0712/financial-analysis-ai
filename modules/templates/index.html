@@ -2,50 +2,72 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Financial Analyst Dashboard</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- Bootstrap CSS через CDN -->
+  <title>Financial Market Analyst Dashboard</title>
   <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
   <style>
     body { background-color: #f8f9fa; }
-    .navbar-brand { font-weight: bold; }
   </style>
 </head>
 <body>
-  <!-- Навигационная панель -->
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-    <a class="navbar-brand" href="#">AI Market Analyst</a>
-  </nav>
+<div class="container mt-5">
+  <h1>Financial Market Analyst Dashboard</h1>
+  <form method="post" action="/">
+    <!-- Mode Selection -->
+    <div class="form-group">
+      <label for="mode">Select Analysis Mode:</label>
+      <select class="form-control" id="mode" name="mode" onchange="toggleInputs()">
+        <option value="historical" selected>Historical Data Only</option>
+        <option value="forecast">Forecast Only (Auto 2-year History)</option>
+        <option value="both">Both Historical & Forecast</option>
+      </select>
+    </div>
 
-  <!-- Основной контейнер с формой -->
-  <div class="container mt-5">
-    <h1 class="mb-4">Financial Market Dashboard</h1>
-    <form method="post" action="/">
-      <div class="form-row">
-        <div class="form-group col-md-3">
-          <label for="ticker">Ticker Symbol</label>
-          <input type="text" class="form-control" id="ticker" name="ticker" value="AAPL" required>
-        </div>
-        <div class="form-group col-md-3">
-          <label for="start_date">Start Date</label>
-          <input type="date" class="form-control" id="start_date" name="start_date" value="2020-01-01" required>
-        </div>
-        <div class="form-group col-md-3">
-          <label for="end_date">End Date</label>
-          <input type="date" class="form-control" id="end_date" name="end_date" value="2020-12-31" required>
-        </div>
-        <div class="form-group col-md-3">
-          <label for="forecast_horizon">Forecast Horizon (days)</label>
-          <input type="number" class="form-control" id="forecast_horizon" name="forecast_horizon" value="5" required>
-        </div>
+    <!-- Historical Inputs -->
+    <div id="historicalInputs">
+      <div class="form-group">
+        <label for="start_date">Start Date (YYYY-MM-DD):</label>
+        <input type="date" class="form-control" id="start_date" name="start_date" value="2021-01-01">
       </div>
-      <button type="submit" class="btn btn-primary">Run Analysis</button>
-    </form>
-  </div>
+      <div class="form-group">
+        <label for="end_date">End Date (YYYY-MM-DD):</label>
+        <input type="date" class="form-control" id="end_date" name="end_date" value="2023-01-01">
+      </div>
+    </div>
 
-  <!-- Подключение JavaScript для Bootstrap -->
-  <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
-  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <!-- Forecast Input -->
+    <div id="forecastInputs" style="display: none;">
+      <div class="form-group">
+        <label for="forecast_horizon">Forecast Horizon (days):</label>
+        <input type="number" class="form-control" id="forecast_horizon" name="forecast_horizon" value="5">
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Run Analysis</button>
+  </form>
+</div>
+
+<!-- Bootstrap and JS (via CDN) -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+<script>
+function toggleInputs() {
+  const mode = document.getElementById('mode').value;
+  const historicalInputs = document.getElementById('historicalInputs');
+  const forecastInputs = document.getElementById('forecastInputs');
+
+  if (mode === 'historical') {
+    historicalInputs.style.display = 'block';
+    forecastInputs.style.display = 'none';
+  } else if (mode === 'forecast') {
+    historicalInputs.style.display = 'none';
+    forecastInputs.style.display = 'block';
+  } else { // mode === 'both'
+    historicalInputs.style.display = 'block';
+    forecastInputs.style.display = 'block';
+  }
+}
+</script>
 </body>
 </html>

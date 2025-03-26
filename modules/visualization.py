@@ -1,3 +1,5 @@
+# modules/visualization.py
+
 import pandas as pd
 import numpy as np
 import logging
@@ -23,10 +25,10 @@ class BaseVisualizer(ABC):
     def create_charts(self, data: pd.DataFrame) -> dict:
         """
         Abstract method to create visualizations.
-
+        
         Parameters:
             data (pd.DataFrame): Aggregated financial data with a DateTime index.
-
+            
         Returns:
             dict: Dictionary containing chart objects keyed by chart names.
         """
@@ -123,24 +125,79 @@ class FinancialDataVisualizer(BaseVisualizer):
         
         return charts
 
-# ---------------------------
-# Example usage of the Visualization Module with Bokeh
-# ---------------------------
-if __name__ == "__main__":
-    # Create sample aggregated financial data for demonstration purposes.
-    # In a real scenario, this data would come from the Data Collection Module.
-    dates = pd.date_range(start="2023-01-01", periods=100, freq="D")
-    sample_data = pd.DataFrame({
-        "Close": np.random.rand(100) * 50 + 150,            # Simulated closing prices
-        "Average_Close": np.random.rand(100) * 50 + 152,      # Simulated average closing prices
-        "moving_average_20": np.random.rand(100) * 50 + 149,
-        "moving_average_50": np.random.rand(100) * 50 + 147
-    }, index=dates)
+# ---------------- Forecast Visualization Functions ----------------
+
+def get_forecast_series(forecast_df: pd.DataFrame) -> pd.Series:
+    """
+    Returns the forecast series from the given DataFrame.
     
-    # Instantiate the visualizer and create charts using the sample data.
-    visualizer = FinancialDataVisualizer()
-    charts = visualizer.create_charts(sample_data)
+    Priority:
+      1. Use the 'Forecast' column if it exists.
+      2. Otherwise, use the 'yhat' column (commonly returned by Prophet).
+      3. Otherwise, use the first column of the DataFrame.
     
-    # Display the "price_trend" chart if it was created successfully.
-    if "price_trend" in charts:
-        show(charts["price_trend"])  # Opens an interactive Bokeh plot in the browser or notebook.
+    Parameters:
+        forecast_df (pd.DataFrame): DataFrame with forecast data.
+    
+    Returns:
+        pd.Series: A Pandas Series with forecast values.
+    """
+    if "Forecast" in forecast_df.columns:
+        return forecast_df["Forecast"]
+    elif "yhat" in forecast_df.columns:
+        return forecast_df["yhat"]
+    else:
+        return forecast_df.iloc[:, 0]
+
+def create_forecast_chart(forecast_df: pd.DataFrame, title: str):
+    """
+    Create a Bokeh line chart for a single forecast.
+    
+    Parameters:
+        forecast_df (pd.DataFrame): DataFrame with forecast results.
+        title (str): Title of the chart.
+    
+    Returns:
+        Bokeh Figure.
+    """
+    p = figure(title=title, x_axis_type='datetime', width=600, height=400)
+    forecast_values = get_forecast_series(forecast_df)
+    p.line(forecast_df.index, forecast_values, line_width=2, legend_label=title)
+    p.xaxis.axis_label = "Date"
+    p.yaxis.axis_label = "Forecast"
+    return p
+
+def create_combined_forecast_chart(prophet_forecast_df: pd.DataFrame, 
+                                   arima_forecast_df: pd.DataFrame, 
+                                   ensemble_forecast_df: pd.DataFrame, 
+                                   title: str):
+    """
+    Create a combined Bokeh chart displaying forecast lines for Prophet, ARIMA, and Ensemble.
+    
+    Parameters:
+        prophet_forecast_df (pd.DataFrame): DataFrame for Prophet forecast.
+        arima_forecast_df (pd.DataFrame): DataFrame for ARIMA forecast.
+        ensemble_forecast_df (pd.DataFrame): DataFrame for Ensemble forecast.
+        title (str): Title of the chart.
+    
+    Returns:
+        Bokeh Figure.
+    """
+    p = figure(title=title, x_axis_type='datetime', width=800, height=400)
+    
+    if prophet_forecast_df is not None:
+        prophet_values = get_forecast_series(prophet_forecast_df)
+        p.line(prophet_forecast_df.index, prophet_values, line_width=2, color="blue", legend_label="Prophet")
+    
+    if arima_forecast_df is not None:
+        arima_values = get_forecast_series(arima_forecast_df)
+        p.line(arima_forecast_df.index, arima_values, line_width=2, color="green", legend_label="ARIMA")
+    
+    if ensemble_forecast_df is not None:
+        ensemble_values = get_forecast_series(ensemble_forecast_df)
+        p.line(ensemble_forecast_df.index, ensemble_values, line_width=2, color="red", legend_label="Ensemble")
+    
+    p.xaxis.axis_label = "Date"
+    p.yaxis.axis_label = "Forecast"
+    p.legend.location = "top_left"
+    return p
