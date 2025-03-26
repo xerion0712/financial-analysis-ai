@@ -7,7 +7,7 @@ from modules.data_collection import YahooFinanceCollector, CSVDataCollector, Dat
 # Import data analysis modules
 from modules.data_analysis import DataAnalyzer, SummaryStatistics, MovingAverageAnalysis
 # Import the updated visualization module with additional forecast functions
-from modules.visualization import FinancialDataVisualizer, create_forecast_chart, create_combined_forecast_chart
+from modules.visualization import FinancialDataVisualizer, create_forecast_chart, create_combined_forecast_chart, get_forecast_series
 # Import predictive analytics modules
 from modules.prediction import ProphetPredictor, ArimaPredictor, ForecastEvaluator
 # Import reporting modules
@@ -82,12 +82,15 @@ def run_pipeline(ticker: str, start_date: str, end_date: str, forecast_horizon: 
         results["error"] = "Data splitting failed."
         return results
     
-    # 4. PREDICTIVE ANALYTICS (Conditional)
+    ############################################
+# 4. PREDICTIVE ANALYTICS
+############################################
     forecast_results = {}
     if enable_forecast:
         try:
             logger.info("Starting predictive analytics with Prophet.")
             prophet_predictor = ProphetPredictor(target_column="Average_Close")
+            # Prophet forecast
             prophet_results = prophet_predictor.train_predict(train_data, forecast_horizon)
             forecast_results["Prophet"] = prophet_results
             logger.info("Prophet forecast completed.")
@@ -99,9 +102,13 @@ def run_pipeline(ticker: str, start_date: str, end_date: str, forecast_horizon: 
         try:
             logger.info("Starting predictive analytics with ARIMA.")
             arima_predictor = ArimaPredictor(target_column="Average_Close")
-            forecast_start_date = holdout_data.index[0]
-            logger.info(f"Forecast start date for ARIMA: {forecast_start_date}")
-            arima_results = arima_predictor.train_predict(train_data, forecast_horizon, forecast_start_date=forecast_start_date)
+            # If you want to start from the last date in train_data + 1 day:
+            forecast_start_date = train_data.index[-1] + pd.Timedelta(days=1)
+            arima_results = arima_predictor.train_predict(
+                train_data,
+                forecast_horizon,
+                forecast_start_date=forecast_start_date
+            )
             forecast_results["ARIMA"] = arima_results
             logger.info("ARIMA forecast completed.")
         except Exception as e:
@@ -109,21 +116,13 @@ def run_pipeline(ticker: str, start_date: str, end_date: str, forecast_horizon: 
             arima_results = None
             forecast_results["ARIMA"] = {"error": "ARIMA prediction failed."}
         
-        # Log forecast date ranges
-        prophet_forecast_df = prophet_results.get("Forecast") if prophet_results else None
-        if prophet_forecast_df is not None:
-            logger.info(f"Prophet forecast range: {prophet_forecast_df.index.min()} to {prophet_forecast_df.index.max()}")
-        arima_forecast_df = arima_results.get("Forecast") if arima_results else None
-        if arima_forecast_df is not None:
-            logger.info(f"ARIMA forecast range: {arima_forecast_df.index.min()} to {arima_forecast_df.index.max()}")
-        
-        # 5. FORECAST EVALUATION AND ENSEMBLE
+    # Evaluate & Ensemble (unchanged)
         try:
             logger.info("Starting forecast evaluation and ensemble creation.")
             evaluator = ForecastEvaluator()
             evaluator.add_forecast("Prophet", prophet_results)
             evaluator.add_forecast("ARIMA", arima_results)
-            metrics = evaluator.evaluate_on_holdout(holdout_data, "Close")
+            metrics = evaluator.evaluate_on_holdout(holdout_data, "Average_Close")
             logger.info("Forecast evaluation metrics: %s", metrics)
             if not metrics.empty:
                 rmse_values = metrics["RMSE"].values
@@ -132,59 +131,110 @@ def run_pipeline(ticker: str, start_date: str, end_date: str, forecast_horizon: 
                 weights = {model: inverted_rmse[i] / total_inverted for i, model in enumerate(metrics["Model"].values)}
                 ensemble_results = evaluator.create_ensemble_forecast(weights)
                 forecast_results["Ensemble"] = ensemble_results
-                logger.info("Ensemble forecast created with weights: %s", weights)
             else:
-                forecast_results["Ensemble"] = {"forecast_summary": "Ensemble forecast not available", "Model_Metadata": {}}
-                logger.info("No ensemble forecast created due to insufficient evaluation data.")
+                forecast_results["Ensemble"] = {...}
         except Exception as e:
             logger.error("Forecast evaluation or ensemble creation failed: %s", e)
             forecast_results["Ensemble"] = {"error": "Ensemble forecast not available."}
     else:
         logger.info("Forecasting skipped by user choice.")
-    
-    # 6. VISUALIZATION
+
+############################################
+# 6. VISUALIZATION (Updated)
+############################################
+    def filter_partial_history(forecast_df: pd.DataFrame, last_date: pd.Timestamp, days_of_history: int = 14) -> pd.DataFrame:
+        """
+        Filters the forecast DataFrame to include only rows from (last_date - days_of_history) onward.
+        This retains a small portion of history before the forecast.
+        """
+        if forecast_df is None or forecast_df.empty:
+            return pd.DataFrame()
+        if not isinstance(forecast_df.index, pd.DatetimeIndex):
+            raise ValueError("Forecast DataFrame must have a DatetimeIndex")
+        cutoff_date = last_date - pd.Timedelta(days=days_of_history)
+        return forecast_df.loc[forecast_df.index >= cutoff_date]
+
     try:
         logger.info("Starting visualization.")
         visualizer = FinancialDataVisualizer()
         charts = visualizer.create_charts(full_data)
+        price_trend_html = "<p>Price trend chart not available.</p>"
         if "price_trend" in charts:
-            price_trend_html = file_html(charts["price_trend"], CDN, "Price Trend")
-        else:
-            price_trend_html = "<p>Price trend chart not available.</p>"
-        
+            try:
+                price_trend_html = file_html(charts["price_trend"], CDN, "Price Trend")
+            except Exception as e:
+                logger.error(f"Error rendering price trend: {str(e)}")
+
         forecast_html_parts = []
         if enable_forecast:
-            if prophet_results is not None and "Forecast" in prophet_results:
-                prophet_chart = create_forecast_chart(prophet_results["Forecast"], "Prophet Forecast")
-                prophet_chart_html = file_html(prophet_chart, CDN, "Prophet Forecast")
-                forecast_html_parts.append(prophet_chart_html)
-            if arima_results is not None and "Forecast" in arima_results:
-                arima_chart = create_forecast_chart(arima_results["Forecast"], "ARIMA Forecast")
-                arima_chart_html = file_html(arima_chart, CDN, "ARIMA Forecast")
-                forecast_html_parts.append(arima_chart_html)
-            if "Ensemble" in forecast_results and forecast_results["Ensemble"] is not None and "Forecast" in forecast_results["Ensemble"]:
-                ensemble_chart = create_forecast_chart(forecast_results["Ensemble"]["Forecast"], "Ensemble Forecast")
-                ensemble_chart_html = file_html(ensemble_chart, CDN, "Ensemble Forecast")
-                forecast_html_parts.append(ensemble_chart_html)
-            if (prophet_results is not None and "Forecast" in prophet_results) or (arima_results is not None and "Forecast" in arima_results):
+            # Define last historical date and history window (e.g., last 14 days)
+            last_date = train_data.index[-1]
+            days_of_history = 14
+
+            # Helper function: filter partial history + compute final forecast & trend.
+            def compute_trend_and_filter(model_name):
+                if model_name not in forecast_results or "Forecast" not in forecast_results[model_name]:
+                    logger.warning(f"Missing forecast for {model_name}")
+                    return None
+                df = forecast_results[model_name]["Forecast"]
+                partial_df = filter_partial_history(df, last_date, days_of_history)
+                if partial_df.empty:
+                    logger.warning(f"Empty forecast after partial filter for {model_name}")
+                    return None
+                # Use get_forecast_series() to extract the forecast series robustly.
+                try:
+                    forecast_series = get_forecast_series(partial_df)
+                except Exception as e:
+                    logger.error(f"Error getting forecast series for {model_name}: {str(e)}")
+                    return None
+                final_val = forecast_series.iloc[-1]
+                last_close_price = train_data["Average_Close"].iloc[-1]
+                diff = final_val - last_close_price
+                trend_str = "No change"
+                if diff > 0:
+                    trend_str = f"Up by {diff:.2f}"
+                elif diff < 0:
+                    trend_str = f"Down by {abs(diff):.2f}"
+                forecast_results[model_name]["FinalForecast"] = final_val
+                forecast_results[model_name]["Trend"] = trend_str
+                return partial_df
+
+            prophet_future_df = compute_trend_and_filter("Prophet")
+            arima_future_df   = compute_trend_and_filter("ARIMA")
+            ensemble_future_df= compute_trend_and_filter("Ensemble")
+            
+            # Build individual charts (only if filtered forecast data is available)
+            if prophet_future_df is not None:
+                prophet_chart = create_forecast_chart(prophet_future_df, "Prophet Forecast (+14d History)")
+                forecast_html_parts.append(file_html(prophet_chart, CDN, "Prophet Forecast"))
+            if arima_future_df is not None:
+                arima_chart = create_forecast_chart(arima_future_df, "ARIMA Forecast (+14d History)")
+                forecast_html_parts.append(file_html(arima_chart, CDN, "ARIMA Forecast"))
+            if ensemble_future_df is not None:
+                ensemble_chart = create_forecast_chart(ensemble_future_df, "Ensemble Forecast (+14d History)")
+                forecast_html_parts.append(file_html(ensemble_chart, CDN, "Ensemble Forecast"))
+            
+            # Combined chart: only if at least one model provides forecast data
+            if (prophet_future_df is not None or arima_future_df is not None or ensemble_future_df is not None):
                 combined_chart = create_combined_forecast_chart(
-                    prophet_results["Forecast"] if prophet_results and "Forecast" in prophet_results else None,
-                    arima_results["Forecast"] if arima_results and "Forecast" in arima_results else None,
-                    forecast_results["Ensemble"]["Forecast"] if ("Ensemble" in forecast_results and forecast_results["Ensemble"] is not None and "Forecast" in forecast_results["Ensemble"]) else None,
-                    "Combined Forecast"
+                    prophet_future_df,
+                    arima_future_df,
+                    ensemble_future_df,
+                    "Combined Forecast (+14d History)"
                 )
-                combined_chart_html = file_html(combined_chart, CDN, "Combined Forecast")
-            else:
-                combined_chart_html = "<p>Combined forecast chart not available.</p>"
-            forecast_html = "".join(forecast_html_parts) + combined_chart_html
+                forecast_html_parts.append(file_html(combined_chart, CDN, "Combined Forecast"))
+            
+            forecast_html = "".join(forecast_html_parts) or "<p>No forecast visualizations available.</p>"
         else:
             forecast_html = "<p>Forecasting was disabled by user choice.</p>"
-        
+
         logger.info("Visualization completed.")
     except Exception as e:
-        logger.error("Visualization failed: %s", e)
-        price_trend_html = "<p>Visualization failed.</p>"
-        forecast_html = "<p>Forecast visualization failed.</p>"
+        logger.error(f"Visualization failed: {str(e)}")
+        price_trend_html = "<p>Visualization error</p>"
+        forecast_html = "<p>Forecast visualization failed</p>"
+
+
     
     # 7. REPORTING
     try:

@@ -12,6 +12,12 @@
 <div class="container mt-5">
   <h1>Financial Market Analyst Dashboard</h1>
   <form method="post" action="/">
+    <!-- Always-visible Ticker Input -->
+    <div class="form-group">
+      <label for="ticker">Ticker Symbol:</label>
+      <input type="text" class="form-control" id="ticker" name="ticker" value="AAPL" required>
+    </div>
+    
     <!-- Mode Selection -->
     <div class="form-group">
       <label for="mode">Select Analysis Mode:</label>

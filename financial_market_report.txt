@@ -12,23 +12,26 @@ Forecast Summary: No forecast summary provided.
 Model Metadata:
   - model: Prophet
   - target_column: Average_Close
-  - forecast_horizon: 30
-  - n_observations: 480
+  - forecast_horizon: 20
+  - n_observations: 488
 
 --- ARIMA Forecast ---
 Forecast Summary: No forecast summary provided.
 Model Metadata:
   - model: ARIMA
   - target_column: Average_Close
-  - forecast_horizon: 30
-  - n_observations: 480
-  - arima_order: (2, 1, 2)
+  - forecast_horizon: 20
+  - n_observations: 488
+  - arima_order: (0, 1, 0)
   - seasonal_order: (0, 0, 0, 0)
   - frequency: D
 
 --- Ensemble Forecast ---
 Forecast Summary: No forecast summary provided.
 Model Metadata:
+  - model: Ensemble
+  - weights: {'Prophet': 0.40658335906885984, 'ARIMA': 0.5934166409311401}
+  - component_models: ['Prophet', 'ARIMA']
 
 === Visualizations ===
 Price Trend: See attached visualization output.

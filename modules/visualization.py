@@ -11,7 +11,8 @@ from bokeh.models import ColumnDataSource, HoverTool, DatetimeTickFormatter
 from bokeh.layouts import gridplot
 
 # Configure logging for the module
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Enable Bokeh output in the notebook; if running as a script, consider using output_file().
 output_file("plots_test.html")
@@ -132,40 +133,63 @@ def get_forecast_series(forecast_df: pd.DataFrame) -> pd.Series:
     Returns the forecast series from the given DataFrame.
     
     Priority:
-      1. Use the 'Forecast' column if it exists.
-      2. Otherwise, use the 'yhat' column (commonly returned by Prophet).
-      3. Otherwise, use the first column of the DataFrame.
-    
-    Parameters:
-        forecast_df (pd.DataFrame): DataFrame with forecast data.
-    
-    Returns:
-        pd.Series: A Pandas Series with forecast values.
+      1. Use the 'Forecast' column (case-insensitive) if it exists.
+      2. Otherwise, use the 'yhat' column (case-insensitive).
+      3. Otherwise, return the first column.
     """
-    if "Forecast" in forecast_df.columns:
-        return forecast_df["Forecast"]
-    elif "yhat" in forecast_df.columns:
-        return forecast_df["yhat"]
+    if forecast_df is None or forecast_df.empty:
+        raise ValueError("Forecast DataFrame is empty or None")
+    cols_lower = [col.lower() for col in forecast_df.columns]
+    if "forecast" in cols_lower:
+        original_col = forecast_df.columns[cols_lower.index("forecast")]
+        return forecast_df[original_col]
+    elif "yhat" in cols_lower:
+        original_col = forecast_df.columns[cols_lower.index("yhat")]
+        return forecast_df[original_col]
     else:
-        return forecast_df.iloc[:, 0]
+        return forecast_df[forecast_df.columns[0]]
 
 def create_forecast_chart(forecast_df: pd.DataFrame, title: str):
-    """
-    Create a Bokeh line chart for a single forecast.
-    
-    Parameters:
-        forecast_df (pd.DataFrame): DataFrame with forecast results.
-        title (str): Title of the chart.
-    
-    Returns:
-        Bokeh Figure.
-    """
-    p = figure(title=title, x_axis_type='datetime', width=600, height=400)
-    forecast_values = get_forecast_series(forecast_df)
-    p.line(forecast_df.index, forecast_values, line_width=2, legend_label=title)
-    p.xaxis.axis_label = "Date"
-    p.yaxis.axis_label = "Forecast"
-    return p
+    """Создание графика прогноза с улучшенной обработкой ошибок"""
+    try:
+        if forecast_df is None or forecast_df.empty:
+            raise ValueError("Пустой DataFrame для прогноза")
+            
+        p = figure(title=title, x_axis_type='datetime', width=600, height=400,
+                 tools="pan,wheel_zoom,box_zoom,reset,save,hover")
+        
+        # Получаем данные прогноза
+        forecast_values = get_forecast_series(forecast_df)
+        
+        # Создаем источник данных
+        source = ColumnDataSource({
+            'date': forecast_df.index,
+            'value': forecast_values,
+            'date_str': [str(d.date()) for d in forecast_df.index]  # Для красивого отображения
+        })
+        
+        # Добавляем линию прогноза
+        p.line('date', 'value', source=source, line_width=2, legend_label=title)
+        
+        # Настраиваем hover
+        hover = HoverTool(
+            tooltips=[
+                ("Date", "@date_str"),
+                ("Value", "@value{0.2f}")
+            ]
+        )
+        p.add_tools(hover)
+        
+        # Настройка осей
+        p.xaxis.axis_label = "Date"
+        p.yaxis.axis_label = "Forecast Value"
+        p.legend.location = "top_left"
+        
+        return p
+        
+    except Exception as e:
+        logger.error(f"Error creating forecast chart: {str(e)}")
+        return figure(title=f"Error: {str(e)}", width=600, height=400)
 
 def create_combined_forecast_chart(prophet_forecast_df: pd.DataFrame, 
                                    arima_forecast_df: pd.DataFrame, 
